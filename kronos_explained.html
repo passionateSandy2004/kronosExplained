@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kronos — What Actually Happens Inside</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0f0f12;
+    color: #e0ddd8;
+    line-height: 1.6;
+    padding: 0;
+  }
+
+  /* ---- COVER ---- */
+  .cover {
+    background: #0f0f12;
+    border-bottom: 1px solid #2a2a30;
+    padding: 60px 64px 48px;
+  }
+  .cover-tag {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: #5a5a6e;
+    margin-bottom: 14px;
+  }
+  .cover h1 {
+    font-size: 36px;
+    font-weight: 600;
+    color: #f0ede8;
+    line-height: 1.2;
+    margin-bottom: 10px;
+  }
+  .cover-sub {
+    font-size: 15px;
+    color: #7a7a8e;
+    max-width: 560px;
+  }
+
+  /* ---- SECTIONS ---- */
+  .section {
+    padding: 52px 64px;
+    border-bottom: 1px solid #1e1e24;
+  }
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: #4a4a5a;
+    margin-bottom: 8px;
+  }
+  .section h2 {
+    font-size: 22px;
+    font-weight: 600;
+    color: #f0ede8;
+    margin-bottom: 28px;
+  }
+  p { font-size: 14px; color: #9a9aaa; max-width: 640px; line-height: 1.75; }
+  p + p { margin-top: 12px; }
+
+  /* ---- CANDLE TOKENIZER ---- */
+  .candle-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-end;
+    margin: 32px 0 16px;
+    flex-wrap: wrap;
+  }
+  .candle-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 64px;
+  }
+  .candle-svg-area { height: 100px; display: flex; align-items: flex-end; }
+  .candle-tokens {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    align-items: center;
+    margin-top: 6px;
+  }
+  .token-pill {
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+  }
+  .token-coarse { background: #2a1f4a; color: #a088f0; border: 1px solid #3d2d6a; }
+  .token-fine   { background: #1a2e40; color: #60b8e0; border: 1px solid #264050; }
+  .candle-label { font-size: 10px; color: #5a5a6e; }
+
+  .arrow-right {
+    font-size: 20px;
+    color: #3a3a48;
+    padding-bottom: 50px;
+    flex-shrink: 0;
+  }
+
+  /* ---- BUCKET DIAGRAM ---- */
+  .bucket-section { margin: 32px 0; }
+  .bucket-row {
+    display: flex;
+    gap: 6px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .bucket {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 54px;
+  }
+  .bucket-box {
+    width: 44px;
+    border: 1.5px solid #2e2e3e;
+    border-top: none;
+    border-radius: 0 0 6px 6px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 4px;
+    transition: border-color 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .bucket-box.active { border-color: #6040b0; }
+  .bucket-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    border-radius: 0 0 5px 5px;
+  }
+  .bucket-id { font-size: 9px; font-family: monospace; color: #5a5a6e; }
+  .bucket-num { font-size: 10px; font-weight: 600; color: #7a7aaa; position: relative; z-index: 1; }
+
+  .range-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #4a4a5a;
+    margin-top: 4px;
+    max-width: 440px;
+  }
+
+  /* ---- SEQUENCE DIAGRAM ---- */
+  .seq-wrap {
+    background: #13131a;
+    border: 1px solid #22222c;
+    border-radius: 10px;
+    padding: 28px 32px;
+    margin: 28px 0;
+    overflow-x: auto;
+  }
+  .seq-row {
+    display: flex;
+    gap: 0;
+    align-items: center;
+    flex-wrap: nowrap;
+    min-width: 600px;
+  }
+  .seq-token {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    min-width: 52px;
+  }
+  .seq-t-coarse {
+    background: #2a1f4a;
+    border: 1px solid #3d2d6a;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: monospace;
+    padding: 4px 6px;
+    color: #a088f0;
+    white-space: nowrap;
+  }
+  .seq-t-fine {
+    background: #1a2e40;
+    border: 1px solid #264050;
+    border-radius: 4px;
+    font-size: 10px;
+    font-family: monospace;
+    padding: 4px 6px;
+    color: #60b8e0;
+    white-space: nowrap;
+  }
+  .seq-sep {
+    width: 8px;
+    border-top: 1px dashed #2e2e3e;
+    align-self: center;
+    margin-top: -20px;
+    flex-shrink: 0;
+  }
+  .seq-candle-label {
+    font-size: 9px;
+    color: #4a4a5a;
+    text-align: center;
+    margin-top: 4px;
+    white-space: nowrap;
+  }
+
+  /* ---- GPT STACK ---- */
+  .gpt-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    max-width: 480px;
+    margin: 28px 0;
+  }
+  .gpt-layer {
+    border: 1px solid #22222c;
+    padding: 12px 18px;
+    font-size: 13px;
+    font-family: monospace;
+    color: #8888aa;
+    position: relative;
+    transition: background 0.15s;
+  }
+  .gpt-layer:first-child { border-radius: 8px 8px 0 0; }
+  .gpt-layer:last-child { border-radius: 0 0 8px 8px; }
+  .gpt-layer + .gpt-layer { border-top: none; }
+  .gpt-layer.attn { background: #18182a; }
+  .gpt-layer.ffn  { background: #131320; }
+  .gpt-layer .layer-tag {
+    position: absolute;
+    right: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 9px;
+    color: #3a3a4e;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .gpt-io-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 16px 0;
+    max-width: 480px;
+  }
+  .gpt-io-box {
+    flex: 1;
+    border: 1px solid #22222c;
+    border-radius: 8px;
+    padding: 12px 16px;
+    font-size: 12px;
+  }
+  .gpt-io-box.input  { border-color: #2a1f4a; background: #18122e; }
+  .gpt-io-box.output { border-color: #264050; background: #111e2e; }
+  .gpt-io-label { font-size: 9px; color: #4a4a5a; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 5px; }
+  .gpt-io-val { font-family: monospace; font-size: 11px; color: #9a9aaa; }
+
+  /* ---- TRAINING SCALE ---- */
+  .scale-bar-wrap { margin: 28px 0; }
+  .scale-item {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .scale-label { width: 130px; font-size: 12px; color: #7a7a8e; flex-shrink: 0; text-align: right; }
+  .scale-bar-outer {
+    flex: 1;
+    height: 22px;
+    background: #16161e;
+    border-radius: 4px;
+    overflow: hidden;
+    max-width: 400px;
+    border: 1px solid #22222c;
+  }
+  .scale-bar-inner {
+    height: 100%;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    padding-left: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    font-family: monospace;
+    white-space: nowrap;
+  }
+  .scale-val { font-size: 11px; color: #5a5a6e; margin-left: 10px; }
+
+  /* ---- HONEST TAKE ---- */
+  .honest-box {
+    background: #1a1208;
+    border: 1px solid #3a2a10;
+    border-radius: 10px;
+    padding: 28px 32px;
+    margin: 28px 0;
+    max-width: 640px;
+  }
+  .honest-box .ht { font-size: 12px; color: #b08030; margin-bottom: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .honest-box p { color: #a08050; max-width: 100%; }
+
+  /* ---- LEGEND ---- */
+  .legend {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 16px 0;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: #5a5a6e;
+  }
+  .legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 3px;
+  }
+
+  /* ---- SOFTMAX VIZ ---- */
+  .softmax-wrap {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin: 28px 0;
+  }
+  .softmax-col { display: flex; flex-direction: column; gap: 8px; min-width: 200px; }
+  .softmax-col-title { font-size: 11px; color: #5a5a6e; margin-bottom: 4px; letter-spacing: 0.06em; }
+  .prob-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .prob-id {
+    font-size: 10px; font-family: monospace; color: #5a5a6e;
+    width: 32px; text-align: right; flex-shrink: 0;
+  }
+  .prob-bar-outer {
+    flex: 1; height: 16px; background: #16161e; border-radius: 3px; overflow: hidden; max-width: 150px;
+    border: 1px solid #22222c;
+  }
+  .prob-bar-inner { height: 100%; border-radius: 3px; }
+  .prob-val { font-size: 10px; font-family: monospace; color: #5a5a6e; width: 36px; }
+  .prob-star { font-size: 10px; color: #a088f0; }
+
+  /* ---- DECODE STEP ---- */
+  .decode-steps { display: flex; flex-direction: column; gap: 0; max-width: 480px; margin: 24px 0; }
+  .decode-step {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px;
+    border: 1px solid #22222c;
+    font-size: 13px;
+  }
+  .decode-step:first-child { border-radius: 8px 8px 0 0; }
+  .decode-step:last-child { border-radius: 0 0 8px 8px; border-top: none; }
+  .decode-step + .decode-step { border-top: none; }
+  .decode-step.step-a { background: #18122e; }
+  .decode-step.step-b { background: #111e2e; }
+  .decode-num { font-size: 11px; font-family: monospace; color: #3a3a4e; width: 20px; }
+  .decode-content { flex: 1; color: #8888aa; font-family: monospace; font-size: 12px; }
+  .decode-out {
+    font-size: 10px;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-family: monospace;
+    font-weight: 600;
+  }
+  .decode-out.co { background: #2a1f4a; color: #a088f0; border: 1px solid #3d2d6a; }
+  .decode-out.fi { background: #1a2e40; color: #60b8e0; border: 1px solid #264050; }
+
+  /* ---- FOOTER ---- */
+  .footer {
+    padding: 32px 64px;
+    font-size: 11px;
+    color: #3a3a48;
+    border-top: 1px solid #1e1e24;
+  }
+</style>
+</head>
+<body>
+
+<!-- COVER -->
+<div class="cover">
+  <div class="cover-tag">Architecture breakdown · Kronos TSFM</div>
+  <h1>What Kronos actually does,<br>step by step</h1>
+  <div class="cover-sub">No marketing. Just the exact mechanism — tokenization, model, training objective, and where the real edge is.</div>
+</div>
+
+<!-- SECTION 1: TOKENIZATION -->
+<div class="section">
+  <div class="section-label">Step 1</div>
+  <h2>OHLCV → discrete integer IDs</h2>
+  <p>Each candle (Open, High, Low, Close, Volume) is a 5-number tuple. Kronos runs it through a quantizer that buckets continuous values into a finite vocabulary — exactly like BPE for text, except instead of characters you're bucketing price ranges and volumes.</p>
+  <p>Each candle becomes <strong style="color:#c0bbd0">exactly 2 integers</strong>: one coarse ID (rough price direction / magnitude) and one fine ID (the residual detail within that bucket). Nothing else.</p>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#6040b0"></div>Coarse token — rough bucket</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2060a0"></div>Fine token — residual detail</div>
+  </div>
+
+  <div class="candle-row">
+
+    <!-- Candle 1: small bearish -->
+    <div class="candle-wrap">
+      <div class="candle-svg-area">
+        <svg width="32" height="90" viewBox="0 0 32 90">
+          <line x1="16" y1="5" x2="16" y2="20" stroke="#cc5050" stroke-width="1.5"/>
+          <rect x="8" y="20" width="16" height="30" fill="#cc5050" rx="2"/>
+          <line x1="16" y1="50" x2="16" y2="64" stroke="#cc5050" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="candle-tokens">
+        <div class="token-pill token-coarse">C:47</div>
+        <div class="token-pill token-fine">F:83</div>
+      </div>
+      <div class="candle-label">bearish</div>
+    </div>
+
+    <div class="arrow-right">→</div>
+
+    <!-- Candle 2: big bullish -->
+    <div class="candle-wrap">
+      <div class="candle-svg-area">
+        <svg width="32" height="90" viewBox="0 0 32 90">
+          <line x1="16" y1="2" x2="16" y2="10" stroke="#40b060" stroke-width="1.5"/>
+          <rect x="8" y="10" width="16" height="65" fill="#40b060" rx="2"/>
+          <line x1="16" y1="75" x2="16" y2="88" stroke="#40b060" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="candle-tokens">
+        <div class="token-pill token-coarse">C:12</div>
+        <div class="token-pill token-fine">F:204</div>
+      </div>
+      <div class="candle-label">big bull</div>
+    </div>
+
+    <div class="arrow-right">→</div>
+
+    <!-- Candle 3: doji -->
+    <div class="candle-wrap">
+      <div class="candle-svg-area">
+        <svg width="32" height="90" viewBox="0 0 32 90">
+          <line x1="16" y1="20" x2="16" y2="45" stroke="#8888aa" stroke-width="1.5"/>
+          <rect x="6" y="43" width="20" height="4" fill="#8888aa" rx="1"/>
+          <line x1="16" y1="47" x2="16" y2="70" stroke="#8888aa" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="candle-tokens">
+        <div class="token-pill token-coarse">C:128</div>
+        <div class="token-pill token-fine">F:11</div>
+      </div>
+      <div class="candle-label">doji</div>
+    </div>
+
+    <div class="arrow-right">→</div>
+
+    <!-- Candle 4: small bullish -->
+    <div class="candle-wrap">
+      <div class="candle-svg-area">
+        <svg width="32" height="90" viewBox="0 0 32 90">
+          <line x1="16" y1="30" x2="16" y2="40" stroke="#40b060" stroke-width="1.5"/>
+          <rect x="8" y="40" width="16" height="22" fill="#40b060" rx="2"/>
+          <line x1="16" y1="62" x2="16" y2="74" stroke="#40b060" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="candle-tokens">
+        <div class="token-pill token-coarse">C:91</div>
+        <div class="token-pill token-fine">F:55</div>
+      </div>
+      <div class="candle-label">small bull</div>
+    </div>
+
+    <div class="arrow-right">→</div>
+
+    <!-- Candle 5: big bearish -->
+    <div class="candle-wrap">
+      <div class="candle-svg-area">
+        <svg width="32" height="90" viewBox="0 0 32 90">
+          <line x1="16" y1="8" x2="16" y2="15" stroke="#cc5050" stroke-width="1.5"/>
+          <rect x="8" y="15" width="16" height="58" fill="#cc5050" rx="2"/>
+          <line x1="16" y1="73" x2="16" y2="85" stroke="#cc5050" stroke-width="1.5"/>
+        </svg>
+      </div>
+      <div class="candle-tokens">
+        <div class="token-pill token-coarse">C:39</div>
+        <div class="token-pill token-fine">F:177</div>
+      </div>
+      <div class="candle-label">big bear</div>
+    </div>
+
+  </div>
+
+  <!-- Bucket diagram -->
+  <div class="bucket-section">
+    <div style="font-size:11px; color:#5a5a6e; margin-bottom:12px;">Coarse bucket distribution — 256 possible IDs, each covering a price-move range</div>
+    <div class="bucket-row">
+      <!-- Big bearish buckets -->
+      <div class="bucket">
+        <div class="bucket-box" style="height:58px; width:44px;">
+          <div class="bucket-fill" style="height:90%; background:#cc505030;"></div>
+          <span class="bucket-num">↓↓↓</span>
+        </div>
+        <div class="bucket-id">12–20</div>
+      </div>
+      <div class="bucket">
+        <div class="bucket-box" style="height:44px; width:44px;">
+          <div class="bucket-fill" style="height:70%; background:#cc505022;"></div>
+          <span class="bucket-num">↓↓</span>
+        </div>
+        <div class="bucket-id">20–45</div>
+      </div>
+      <!-- Small move buckets -->
+      <div class="bucket">
+        <div class="bucket-box active" style="height:34px; width:44px;">
+          <div class="bucket-fill" style="height:55%; background:#6040b020;"></div>
+          <span class="bucket-num" style="color:#a088f0;">↓</span>
+        </div>
+        <div class="bucket-id" style="color:#6040b0;">45–90</div>
+      </div>
+      <!-- Doji/flat buckets -->
+      <div class="bucket">
+        <div class="bucket-box" style="height:26px; width:44px;">
+          <div class="bucket-fill" style="height:45%; background:#8888aa18;"></div>
+          <span class="bucket-num">–</span>
+        </div>
+        <div class="bucket-id">90–145</div>
+      </div>
+      <!-- Small bull -->
+      <div class="bucket">
+        <div class="bucket-box" style="height:34px; width:44px;">
+          <div class="bucket-fill" style="height:55%; background:#40b06018;"></div>
+          <span class="bucket-num">↑</span>
+        </div>
+        <div class="bucket-id">145–180</div>
+      </div>
+      <!-- Big bull -->
+      <div class="bucket">
+        <div class="bucket-box" style="height:44px; width:44px;">
+          <div class="bucket-fill" style="height:70%; background:#40b06028;"></div>
+          <span class="bucket-num">↑↑</span>
+        </div>
+        <div class="bucket-id">180–230</div>
+      </div>
+      <div class="bucket">
+        <div class="bucket-box" style="height:58px; width:44px;">
+          <div class="bucket-fill" style="height:90%; background:#40b06040;"></div>
+          <span class="bucket-num">↑↑↑</span>
+        </div>
+        <div class="bucket-id">230–256</div>
+      </div>
+    </div>
+    <div class="range-labels">
+      <span>← Strong down</span>
+      <span>Flat →</span>
+      <span>Strong up →</span>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 2: SEQUENCE LAYOUT -->
+<div class="section">
+  <div class="section-label">Step 2</div>
+  <h2>How the token sequence is laid out</h2>
+  <p>A history of N candles becomes a sequence of 2N tokens. The model sees them in order: coarse₁, fine₁, coarse₂, fine₂ … It's identical to how an LLM processes characters — just market candles instead of words.</p>
+
+  <div class="seq-wrap">
+    <div style="font-size:10px; color:#3a3a50; margin-bottom:14px; letter-spacing:0.08em; text-transform:uppercase;">100 candles → 200 tokens fed into the transformer</div>
+    <div class="seq-row">
+      <div class="seq-token">
+        <div class="seq-t-coarse">C:47</div>
+        <div class="seq-t-fine">F:83</div>
+        <div class="seq-candle-label">candle 1</div>
+      </div>
+      <div class="seq-sep"></div>
+      <div class="seq-token">
+        <div class="seq-t-coarse">C:12</div>
+        <div class="seq-t-fine">F:204</div>
+        <div class="seq-candle-label">candle 2</div>
+      </div>
+      <div class="seq-sep"></div>
+      <div class="seq-token">
+        <div class="seq-t-coarse">C:128</div>
+        <div class="seq-t-fine">F:11</div>
+        <div class="seq-candle-label">candle 3</div>
+      </div>
+      <div class="seq-sep"></div>
+      <div class="seq-token">
+        <div class="seq-t-coarse">C:91</div>
+        <div class="seq-t-fine">F:55</div>
+        <div class="seq-candle-label">candle 4</div>
+      </div>
+      <div class="seq-sep"></div>
+      <div style="display:flex; align-items:center; padding-bottom:20px; color:#3a3a50; font-size:18px;">···</div>
+      <div class="seq-sep"></div>
+      <div class="seq-token" style="opacity:0.5">
+        <div class="seq-t-coarse">C:?</div>
+        <div class="seq-t-fine">F:?</div>
+        <div class="seq-candle-label" style="color:#6040b0;">predict</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 3: THE MODEL -->
+<div class="section">
+  <div class="section-label">Step 3</div>
+  <h2>The model — standard GPT decoder</h2>
+  <p>Literally the same architecture as GPT. Decoder-only transformer. Self-attention + feedforward, stacked N times. No special financial layers. No domain-specific modules. Nothing exotic.</p>
+  <p>Input tokens go through an embedding lookup, then through stacked attention + FFN layers, then a linear head projects to logits over the vocabulary size (256 coarse IDs or fine IDs).</p>
+
+  <!-- IO -->
+  <div class="gpt-io-row">
+    <div class="gpt-io-box input">
+      <div class="gpt-io-label">Input</div>
+      <div class="gpt-io-val">[C:47, F:83, C:12, F:204, C:128, F:11 …]</div>
+    </div>
+  </div>
+
+  <!-- Stack -->
+  <div class="gpt-stack">
+    <div class="gpt-layer" style="background:#0e0e18; border-radius:8px 8px 0 0; font-size:11px; color:#3a3a50; padding: 8px 18px;">Embedding lookup → 512-dim vector per token</div>
+    <div class="gpt-layer attn">Self-attention (multi-head)<span class="layer-tag">× 12 layers</span></div>
+    <div class="gpt-layer ffn">Feed-forward (MLP)<span class="layer-tag">× 12 layers</span></div>
+    <div class="gpt-layer attn">Self-attention (multi-head)<span class="layer-tag"></span></div>
+    <div class="gpt-layer ffn">Feed-forward (MLP)<span class="layer-tag"></span></div>
+    <div class="gpt-layer" style="background:#0e0e18; font-size:11px; color:#3a3a50; border-radius:0 0 8px 8px; padding:8px 18px;">Linear head → logits over vocab (256)</div>
+  </div>
+
+  <!-- Output softmax -->
+  <div style="font-size:11px; color:#5a5a6e; margin: 16px 0 10px;">Output: probability distribution over 256 bucket IDs — argmax gives the predicted token</div>
+
+  <div class="softmax-wrap">
+    <div class="softmax-col">
+      <div class="softmax-col-title">Coarse prediction (next candle direction)</div>
+      <div class="prob-row">
+        <div class="prob-id">C:39</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:12%; background:#3a2a6a;"></div></div>
+        <div class="prob-val">0.03</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">C:47</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:18%; background:#4a3a7a;"></div></div>
+        <div class="prob-val">0.05</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">C:91</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:60%; background:#6040b0;"></div></div>
+        <div class="prob-val">0.41</div>
+        <div class="prob-star">← pick</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">C:128</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:28%; background:#4a3a7a;"></div></div>
+        <div class="prob-val">0.12</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">C:155</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:10%; background:#3a2a6a;"></div></div>
+        <div class="prob-val">0.02</div>
+      </div>
+    </div>
+
+    <div style="display:flex; align-items:center; color:#3a3a48; font-size:20px; padding-top:28px;">→</div>
+
+    <div class="softmax-col">
+      <div class="softmax-col-title">Fine prediction (conditioned on C:91)</div>
+      <div class="prob-row">
+        <div class="prob-id">F:11</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:8%; background:#1a3050;"></div></div>
+        <div class="prob-val">0.02</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">F:55</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:45%; background:#2060a0;"></div></div>
+        <div class="prob-val">0.28</div>
+        <div class="prob-star" style="color:#60b8e0;">← pick</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">F:83</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:22%; background:#1a3050;"></div></div>
+        <div class="prob-val">0.09</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">F:130</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:14%; background:#1a3050;"></div></div>
+        <div class="prob-val">0.04</div>
+      </div>
+      <div class="prob-row">
+        <div class="prob-id">F:177</div>
+        <div class="prob-bar-outer"><div class="prob-bar-inner" style="width:10%; background:#1a3050;"></div></div>
+        <div class="prob-val">0.03</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SECTION 4: DECODE ORDER -->
+<div class="section">
+  <div class="section-label">Step 4</div>
+  <h2>Hierarchical decode — what it actually means</h2>
+  <p>"Hierarchical" sounds fancy. It's this: to generate the next candle, the model does two sequential forward passes (or two sequential output heads in one pass).</p>
+
+  <div class="decode-steps">
+    <div class="decode-step step-a">
+      <div class="decode-num">1.</div>
+      <div class="decode-content">Run forward pass → predict coarse token → argmax or sample</div>
+      <div class="decode-out co">C:91</div>
+    </div>
+    <div class="decode-step step-b">
+      <div class="decode-num">2.</div>
+      <div class="decode-content">Append C:91 to sequence → run again → predict fine token</div>
+      <div class="decode-out fi">F:55</div>
+    </div>
+    <div class="decode-step" style="background:#111118; border-radius:0 0 8px 8px;">
+      <div class="decode-num" style="color:#5a5a6e;">✓</div>
+      <div class="decode-content" style="color:#5a5a6e;">Decode C:91 + F:55 back to OHLCV numbers → that's the predicted next candle</div>
+    </div>
+  </div>
+
+  <p>Two softmax outputs. Two cross-entropy losses summed. That's the entire training objective. Nothing else.</p>
+</div>
+
+<!-- SECTION 5: TRAINING SCALE -->
+<div class="section">
+  <div class="section-label">The actual edge</div>
+  <h2>Training data scale — this is the whole paper</h2>
+  <p>Architecture: standard. Tokenization: a well-known idea (VQ-VAE applied to time series). The only genuine contribution is the dataset size and financial-domain exclusivity.</p>
+
+  <div class="scale-bar-wrap">
+    <div class="scale-item">
+      <div class="scale-label">Kronos</div>
+      <div class="scale-bar-outer">
+        <div class="scale-bar-inner" style="width:100%; background:#2a1a4a; color:#a088f0;">12B candles · 45 exchanges</div>
+      </div>
+    </div>
+    <div class="scale-item">
+      <div class="scale-label">Chronos</div>
+      <div class="scale-bar-outer">
+        <div class="scale-bar-inner" style="width:28%; background:#1e1e2e; color:#5a5a6e;">~3B records (mixed domain)</div>
+      </div>
+    </div>
+    <div class="scale-item">
+      <div class="scale-label">Moirai</div>
+      <div class="scale-bar-outer">
+        <div class="scale-bar-inner" style="width:18%; background:#1e1e2e; color:#5a5a6e;">~1.8B records</div>
+      </div>
+    </div>
+    <div class="scale-item">
+      <div class="scale-label">Your own LSTM</div>
+      <div class="scale-bar-outer">
+        <div class="scale-bar-inner" style="width:3%; background:#1e1e2e; color:#3a3a4e;"> </div>
+      </div>
+      <div class="scale-val">~50K trades</div>
+    </div>
+  </div>
+
+  <p>Other models trained on generic time series (weather, IoT, traffic) with ≤1% financial data. Kronos trained on 100% financial data across 7 timeframes (1min → weekly). The pattern library it builds — what "a flush into support looks like across 30 countries" — is simply unavailable to any single-market model. That's the moat.</p>
+</div>
+
+<!-- SECTION 6: HONEST TAKE -->
+<div class="section" style="border-bottom:none;">
+  <div class="section-label">Realistic assessment</div>
+  <h2>What it can and cannot do</h2>
+
+  <div class="honest-box">
+    <div class="ht">What it actually learns</div>
+    <p>Given this integer sequence, what integer comes next? It's compression and pattern matching over 12B examples. It has no causal model of why markets move. It cannot reason about earnings, RBI policy, or geopolitical risk. It finds statistical regularities in price structure — and at 12B samples, it finds a lot of them.</p>
+  </div>
+
+  <div style="display:flex; gap:24px; flex-wrap:wrap; margin: 24px 0;">
+    <div style="flex:1; min-width:240px; background:#0e1a10; border:1px solid #1e3020; border-radius:10px; padding:20px 24px;">
+      <div style="font-size:11px; color:#40a060; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:12px;">Works well for</div>
+      <ul style="list-style:none; display:flex; flex-direction:column; gap:8px;">
+        <li style="font-size:13px; color:#709070;">→ Liquid, regime-stable assets (SPX, USDJPY, BTC/USD)</li>
+        <li style="font-size:13px; color:#709070;">→ Volatility estimation for options pricing</li>
+        <li style="font-size:13px; color:#709070;">→ Synthetic data generation for backtesting</li>
+        <li style="font-size:13px; color:#709070;">→ Zero-shot cross-asset signal when fine-tuning is not feasible</li>
+      </ul>
+    </div>
+    <div style="flex:1; min-width:240px; background:#1a0e0e; border:1px solid #301e1e; border-radius:10px; padding:20px 24px;">
+      <div style="font-size:11px; color:#a04040; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:12px;">Fails silently on</div>
+      <ul style="list-style:none; display:flex; flex-direction:column; gap:8px;">
+        <li style="font-size:13px; color:#907070;">→ Regime breaks (2020 COVID crash, 2022 Adani event)</li>
+        <li style="font-size:13px; color:#907070;">→ Indian options at expiry — IV crush is structural, not in price sequence</li>
+        <li style="font-size:13px; color:#907070;">→ Any signal that requires macro/fundamental context</li>
+        <li style="font-size:13px; color:#907070;">→ Low-liquidity instruments with thin candle history</li>
+      </ul>
+    </div>
+  </div>
+
+  <p style="color:#5a5a6e; font-size:13px;">The one-line summary: GARCH knows why volatility clusters. Kronos doesn't. It just saw that it does, 12 billion times, and got very good at predicting that it will again — until it doesn't.</p>
+</div>
+
+<!-- FOOTER -->
+<div class="footer">
+  Kronos · Architecture breakdown · Built for Santhosh / HMCT · September 2026
+</div>
+
+</body>
+</html>
